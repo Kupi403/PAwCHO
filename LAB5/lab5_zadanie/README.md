@@ -48,11 +48,13 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=5s \
 - Polecenie potwierdzające działanie kontenera i funkcjonowanie aplikacji:
 ```curl http://localhost:8080```
 - wynik
-```<html><body>
+```
+<html><body>
 <h1>System Information</h1>
 <p><strong>IP Address:</strong> 172.17.0.4</p>
 <p><strong>Hostname:</strong> f2044564b36d</p>
 <p><strong>App Version:</strong> 1.2</p>
-</body></html>```
+</body></html>
+```
 
 <img src="./potwierdzenie.jpg">
