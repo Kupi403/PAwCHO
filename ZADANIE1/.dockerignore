@@ -1,0 +1,9 @@
+.git
+.vscode
+Dockerfile
+node_modules
+*.md
+*
+!main.go
+!go.mod
+!go.sum
