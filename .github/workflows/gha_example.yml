@@ -2,8 +2,12 @@ name: CI/CD Pipeline - WeatherApp Production
 
 on:
   push:
-    branches: [main, zadanie-2] # Wyzwalaj na push do tych gałęzi
-  workflow_dispatch: # Umożliwia ręczne odpalenie z zakładki Actions
+    branches: [zadanie-2]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
 
 jobs:
   build-and-secure:
@@ -11,47 +15,41 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1. Pobranie kodu źródłowego z repozytorium
       - name: Check out the source repo
         uses: actions/checkout@v4
 
-      # 2. Konfiguracja emulatorów QEMU (niezbędne do budowania arm64 na runnerze x86)
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
-      # 3. Konfiguracja zaawansowanego buildera Buildx
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # 4. Logowanie do Docker Hub (stamtąd bierzemy i tam wysyłamy CACHE)
       - name: Login to DockerHub
         uses: docker/login-action@v3
         with:
           username: ${{ vars.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      # 5. Logowanie do GitHub Container Registry (ghcr.io - docelowy rejestr produkcyjny)
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
-          username: ${{ vars.GH_USERNAME }}
-          password: ${{ secrets.GITHUB_TOKEN }} # Automatyczny token dostarczany przez GitHub Actions
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-      # 6. Definicja metadanych i schematu tagowania (Dobre praktyki OCI)
       - name: Docker metadata definitions
         id: meta
         uses: docker/metadata-action@v5
         with:
           images: |
-            ghcr.io/${{ vars.GH_USERNAME }}/weather-app
+            ghcr.io/${{ github.repository_owner }}/weather-app
           flavor: |
-            latest=true
+            latest=false
           tags: |
-            type=sha,prefix=sha-,format=short
+            type=sha,priority=100,prefix=sha-,format=short
             type=ref,event=branch
+          convert-lowercase: true
 
-      # 7. Budowanie lokalne na potrzeby skanowania CVE
       - name: Build local image for CVE scanning
         uses: docker/build-push-action@v6
         with:
@@ -61,27 +59,23 @@ jobs:
           load: true
           tags: weather-app:test
 
-      # 8. Test CVE przy użyciu skanera Trivy
-      # Warunek c: Przerwij działanie, jeśli wykryto podatności CRITICAL lub HIGH
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@master
         with:
           image-ref: 'weather-app:test'
           format: 'table'
-          exit-code: '1' # Kod '1' oznacza błąd, co zatrzyma cały pipeline przy wykryciu podatności
+          exit-code: '1'
           ignore-unfixed: true
           vuln-type: 'os,library'
           severity: 'CRITICAL,HIGH'
 
-      # 9. Finalny Build Multi-Arch, Zarządzanie Cache i Push (Tylko jeśli Trivy przejdzie na zielono!)
       - name: Build and push Multi-Arch Docker image
         uses: docker/build-push-action@v6
         with:
           context: ./ZADANIE1
           file: ./ZADANIE1/Dockerfile
-          platforms: linux/amd64,linux/arm64 # Warunek a: Wsparcie dla obu architektur
-          push: true # Wysyłamy do ghcr.io
-          # Warunek b: Dane cache, backend registry, tryb max w dedykowanym repo Docker Hub
+          platforms: linux/amd64,linux/arm64
+          push: true
           cache-from: type=registry,ref=docker.io/${{ vars.DOCKERHUB_USERNAME }}/weather-app-cache:latest
           cache-to: type=registry,ref=docker.io/${{ vars.DOCKERHUB_USERNAME }}/weather-app-cache:latest,mode=max
           tags: ${{ steps.meta.outputs.tags }}
